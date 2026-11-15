@@ -107,3 +107,44 @@ def get_existing_leads() -> set[str]:
         if len(row) >= 5 and row[4].strip():
             existing.add(row[4].strip().rstrip("/").lower())  # Contact / URL
     return existing
+
+def log_lead_for_review(state: dict) -> int:
+    """Logs enriched lead to Google Sheets with Status = PENDING_REVIEW (no auto-send)."""
+    ws = get_worksheet()
+    row = [
+        state.get("company"),
+        state.get("city"),
+        state.get("lead_name"),
+        state.get("lead_role"),
+        state.get("profile_url"),
+        state.get("email"),
+        state.get("phone_number"),
+        f"{state['qualification_score']}/10",
+        state.get("pitch"),
+        state.get("follow_up",""),
+        "PENDING_REVIEW",
+    ]
+    ws.append_row(row, value_input_option="USER_ENTERED")
+    return len(ws.get_all_values())
+
+
+def send_approved_leads() -> list[str]:
+    """Scans Sheet for Status == 'APPROVED', sends email if available, and marks 'SENT'."""
+    ws = get_worksheet()
+    all_rows = ws.get_all_values()
+    dispatched = []
+
+    for idx, row in enumerate(all_rows[1:], start=2):
+        if len(row) >= 11 and row[10].strip().upper() == "APPROVED":
+            company, lead_name, email, pitch = row[0], row[2], row[5], row[8]
+            target_email = TEST_RECIPIENT if email == "Not publicly mentioned" else email
+
+            send_sandbox_email(
+                subject=f"Event support for {company} (GoPratle)",
+                body=pitch,
+                to_email=target_email,
+            )
+            ws.update_cell(idx, 11, "SENT")
+            dispatched.append(f"Row {idx}: {lead_name} ({email})")
+
+    return dispatched

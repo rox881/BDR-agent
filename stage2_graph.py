@@ -16,7 +16,9 @@ class AgentState(TypedDict,total=False):
     raw_results: list[dict]
     lead_name: str
     lead_role: str
-    contact_info: str
+    email: str                 # <-- New
+    phone_number: str          # <-- New
+    profile_url: str
     qualification_score: int
     qualification_reason: str
     pitch: str
@@ -27,7 +29,9 @@ class AgentState(TypedDict,total=False):
 class LeadEvaluation(BaseModel):
     lead_name: str = Field(description="Full name of the best decision-maker, or 'NOT_FOUND'")
     lead_role: str = Field(description="Job title (e.g., Head of Events, HR Manager, Founder)")
-    contact_info: str = Field(description="LinkedIn profile URL or email found in search results")
+    profile_url: str = Field(description="LinkedIn profile URL or email found in search results")
+    email: str = Field(description="Public email if explicitly in snippets, else 'Not publicly mentioned'")
+    phone_number: str = Field(description="Public phone number if explicitly in snippets, else 'Not publicly mentioned'")
     qualification_score: int = Field(description="Fit score from 1 to 10 for booking corporate events")
     qualification_reason: str = Field(description="One-line reason for the score")
 
@@ -67,19 +71,21 @@ def extract_and_qualify(state: AgentState) -> dict:
     structured_llm = llm.with_structured_output(LeadEvaluation)
     prompt = f"""
     Target Company: {state['company']} | City: {state['city']}
-    ALREADY CONTACTED (DO NOT PICK THESE): {state.get('existing_leads', [])}
+    ALREADY CONTACTED (DO NOT PICK): {state.get('existing_leads', [])}
     Search Results: {state['raw_results']}
 
-    Pick the single best NEW decision-maker NOT in the ALREADY CONTACTED list.
-    If every person in the results is already contacted or irrelevant, set lead_name to 'NOT_FOUND'.
-    Score 1-10 based on: Role relevance (+4), City match (+3), Company event potential (+3).
+    Pick the single best NEW decision-maker (Events > Workplace/Admin > HR > Founder).
+    CRITICAL: Extract email and phone_number ONLY if explicitly present in the search text.
+    If not found, you MUST output exact string: "Not publicly mentioned". Never guess or invent emails/numbers.
     """
 
     result = cast(LeadEvaluation, structured_llm.invoke(prompt))
     return {
         "lead_name": result.lead_name,
         "lead_role": result.lead_role,
-        "contact_info": result.contact_info,
+        "profile_url": result.profile_url,
+        "email": result.email,
+        "phone_number": result.phone_number,
         "qualification_score": result.qualification_score,
         "qualification_reason": result.qualification_reason,
     }
@@ -89,7 +95,7 @@ def route_after_qualification(state: AgentState) -> Literal["search_lead", "gene
     existing = set(state.get("existing_leads", []))
     is_duplicate = (
         state["lead_name"].strip().lower() in existing
-        or state["contact_info"].strip().rstrip("/").lower() in existing
+        or state["profile_url"].strip().rstrip("/").lower() in existing
     )
     if (state["lead_name"] == "NOT_FOUND" or is_duplicate or state["qualification_score"] < 5) and state["retries"] < 2:
         print("🔄 [Router] Duplicate, missing, or weak lead -> Retrying search...")
@@ -132,5 +138,5 @@ bdr_agent = build_bdr_graph()
 if __name__ == "__main__":
     output = bdr_agent.invoke({"company": "Zomato", "city": "Gurgaon", "retries": 0})
     print("\n✅ FINAL GRAPH OUTPUT:")
-    for key in ["lead_name", "lead_role", "contact_info", "qualification_score", "pitch", "follow_up"]:
+    for key in ["lead_name", "lead_role", "profile_url","email","phone_number", "qualification_score", "pitch", "follow_up"]:
         print(f"{key}: {output.get(key)}")
