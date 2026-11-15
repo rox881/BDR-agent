@@ -21,19 +21,26 @@ def get_worksheet():
 
 def send_sandbox_email(subject: str, body: str, to_email: str = TEST_RECIPIENT) -> bool:
     if not (SENDER_EMAIL and SENDER_PASSWORD and to_email):
-        print("⚠️ Email credentials not set—skipping SMTP send (logging only).")
+        print("⚠️ Email credentials not set—skipping SMTP send.")
         return False
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = SENDER_EMAIL
-    msg["To"] = to_email
-    msg.set_content(body)
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = SENDER_EMAIL.strip()
+        msg["To"] = to_email.strip()
+        msg.set_content(body)
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(SENDER_EMAIL, SENDER_PASSWORD)
-        smtp.send_message(msg)
-    return True
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as smtp:
+            smtp.ehlo()
+            smtp.starttls()
+            smtp.ehlo()
+            smtp.login(SENDER_EMAIL.strip(), SENDER_PASSWORD.replace(" ", "").strip())
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"⚠️ SMTP Email skipped ({e})—falling back to Telegram + Sheets logging.")
+        return False
 
 
 def log_lead_to_sheet(state: dict, followup_time: str) -> int:
