@@ -96,16 +96,24 @@ async def scheduled_followup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode="Markdown",
     )
 
-def get_existing_leads() -> set[str]:
-    """Returns a lowercase set of existing Lead Names and Contact URLs from the Sheet."""
+def get_existing_leads(company: str = "") -> set[str]:
+    """Returns existing Lead Names and URLs ONLY for the target company."""
     ws = get_worksheet()
     rows = ws.get_all_values()[1:]  # Skip header row
     existing = set()
+    target = company.strip().lower()
+
     for row in rows:
+        if not row:
+            continue
+        row_company = row[0].strip().lower()
+        # Only exclude leads if they belong to the same company
+        if target and row_company != target:
+            continue
         if len(row) >= 3 and row[2].strip():
-            existing.add(row[2].strip().lower())          # Lead Name
+            existing.add(row[2].strip().lower())
         if len(row) >= 5 and row[4].strip():
-            existing.add(row[4].strip().rstrip("/").lower())  # Contact / URL
+            existing.add(row[4].strip().rstrip("/").lower())
     return existing
 
 def log_lead_for_review(state: dict) -> int:
@@ -123,6 +131,7 @@ def log_lead_for_review(state: dict) -> int:
         state.get("pitch"),
         state.get("follow_up",""),
         "PENDING_REVIEW",
+        "Pending Approval",  # Col L: Follow-UP At
     ]
     ws.append_row(row, value_input_option="USER_ENTERED")
     return len(ws.get_all_values())

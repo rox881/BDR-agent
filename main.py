@@ -46,19 +46,30 @@ async def handle_count_selection(update: Update, context: ContextTypes.DEFAULT_T
     count = int(count_str)
 
     await query.edit_message_text(f"🔎 Searching up to **{count}** unique lead(s) for **{company}** in **{city}**...", parse_mode="Markdown")
-    existing = await asyncio.to_thread(get_existing_leads)
+    existing = await asyncio.to_thread(get_existing_leads,company)
     found_rows = []
 
-    for _ in range(count):
-        res = await asyncio.to_thread(
-            bdr_agent.invoke,
-            {"company": company, "city": city, "existing_leads": list(existing), "retries": 0},
-        )
-        if res["lead_name"] == "NOT_FOUND" or res["lead_name"].strip().lower() in existing:
+    for i in range(count):
+        try:
+            await query.edit_message_text(
+                f"🔎 Searching lead {i + 1}/{count} for {company} in {city} (Found {len(found_rows)} so far)..."
+            )
+            res = await asyncio.to_thread(
+                bdr_agent.invoke,
+                {"company": company, "city": city, "existing_leads": list(existing), "source_index": i, "retries": 0},
+            )
+            if res["lead_name"] == "NOT_FOUND":
+                print("ℹ️ Search pool exhausted for this company/city -> Stopping batch early.")
+                break
+            if res["lead_name"].strip().lower() in existing:
+                continue
+            row_idx = await asyncio.to_thread(log_lead_for_review, res)
+            existing.add(res["lead_name"].strip().lower())
+            found_rows.append((row_idx, res))
+            await asyncio.sleep(1.5)
+        except Exception as e:
+            print(f"⚠️ Stopped batch at iteration {i + 1}: {e}")
             break
-        row_idx = await asyncio.to_thread(log_lead_for_review, res)
-        existing.add(res["lead_name"].strip().lower())
-        found_rows.append((row_idx, res))
 
     if not found_rows:
         await query.edit_message_text(f"ℹ️ No new unique leads found for **{company}** in **{city}**.", parse_mode="Markdown")
