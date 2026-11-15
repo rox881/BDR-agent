@@ -1,5 +1,5 @@
 import os
-from typing import TypedDict, Literal
+from typing import TypedDict, Literal ,cast
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
@@ -9,7 +9,7 @@ from langgraph.graph import StateGraph, START, END
 load_dotenv()
 
 # 1. Shared Graph State (The clipboard passed between all nodes)
-class AgentState(TypedDict):
+class AgentState(TypedDict,total=False):
     company: str
     city: str
     raw_results: list[dict]
@@ -36,7 +36,7 @@ class OutreachCopy(BaseModel):
 
 # Initialize Tools & LLM
 search_tool = TavilySearch(max_results=5, search_depth="basic")
-llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0.2,model_kwargs={"reasoning_format": "hidden"})
+llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0.2)
 
 # 3. Node 1: Search Web & LinkedIn for Decision-Makers
 def search_lead(state: AgentState) -> dict:
@@ -64,7 +64,7 @@ def extract_and_qualify(state: AgentState) -> dict:
     Score 1-10 based on: Role relevance (+4), City match (+3), Company event potential (+3).
     Never invent URLs or names not in the search results.
     """
-    result: LeadEvaluation = structured_llm.invoke(prompt)
+    result = cast(LeadEvaluation, structured_llm.invoke(prompt))
     return {
         "lead_name": result.lead_name,
         "lead_role": result.lead_role,
@@ -92,7 +92,7 @@ def generate_pitch(state: AgentState) -> dict:
     - 'pitch': Exactly 3 lines (Line 1: personalized hook; Line 2: GoPratle value; Line 3: low-friction question).
     - 'follow_up': Exactly 2 lines to send 3 days later if no reply.
     """
-    copy: OutreachCopy = structured_llm.invoke(prompt)
+    copy = cast(OutreachCopy, structured_llm.invoke(prompt))
     return {"pitch": copy.pitch, "follow_up": copy.follow_up}
 
 # 7. Assemble & Compile the Graph

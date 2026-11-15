@@ -3,3 +3,4 @@ tvenv/
 __pycache__/
 *.db
 *.sqlite3
+service_account.json
