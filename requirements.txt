@@ -1,3 +1,6 @@
 python-telegram-bot>=22.0
 python-dotenv
 pydantic
+langgraph 
+langchain-groq 
+langchain-tavily
