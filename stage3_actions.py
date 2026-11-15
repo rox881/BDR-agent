@@ -95,3 +95,15 @@ async def scheduled_followup_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         ),
         parse_mode="Markdown",
     )
+
+def get_existing_leads() -> set[str]:
+    """Returns a lowercase set of existing Lead Names and Contact URLs from the Sheet."""
+    ws = get_worksheet()
+    rows = ws.get_all_values()[1:]  # Skip header row
+    existing = set()
+    for row in rows:
+        if len(row) >= 3 and row[2].strip():
+            existing.add(row[2].strip().lower())          # Lead Name
+        if len(row) >= 5 and row[4].strip():
+            existing.add(row[4].strip().rstrip("/").lower())  # Contact / URL
+    return existing

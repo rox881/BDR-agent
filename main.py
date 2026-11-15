@@ -9,6 +9,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 from stage1_bot import parse_lead_input, start_handler
 from stage2_graph import bdr_agent
 from stage3_actions import log_lead_to_sheet, send_sandbox_email, scheduled_followup_job
+from stage3_actions import get_existing_leads, log_lead_to_sheet, send_sandbox_email, scheduled_followup_job
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,33 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"🔎 Searching & qualifying event leads for **{parsed.company}** in **{parsed.city}**...",
         parse_mode="Markdown",
     )
+
+    # Inside run_full_pipeline() in main.py:
+    existing_leads = await asyncio.to_thread(get_existing_leads)
+
+    result = await asyncio.to_thread(
+        bdr_agent.invoke,
+        {
+            "company": parsed.company,
+            "city": parsed.city,
+            "existing_leads": list(existing_leads),
+            "retries": 0,
+        },
+    )
+
+    is_still_duplicate = (
+        result["lead_name"] == "NOT_FOUND"
+        or result["lead_name"].strip().lower() in existing_leads
+        or result["contact_info"].strip().rstrip("/").lower() in existing_leads
+    )
+
+    if is_still_duplicate:
+        await status_msg.edit_text(
+            f"ℹ️ No **new unique** event leads found for **{parsed.company}** in **{parsed.city}** "
+            f"(all discovered contacts are already logged in your Google Sheet).",
+            parse_mode="Markdown",
+        )
+        return
 
     # 1. Run Stage 2 LangGraph Agent (in a thread so async bot stays responsive)
     result = await asyncio.to_thread(
@@ -76,6 +104,7 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"⏳ _Follow-up scheduled in {FOLLOWUP_DELAY}s..._",
         parse_mode="Markdown",
     )
+    
 
 
 def main() -> None:

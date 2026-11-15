@@ -12,6 +12,7 @@ load_dotenv()
 class AgentState(TypedDict,total=False):
     company: str
     city: str
+    existing_leads: list[str]   # <-- New: names/URLs already in Sheet
     raw_results: list[dict]
     lead_name: str
     lead_role: str
@@ -38,19 +39,27 @@ class OutreachCopy(BaseModel):
 search_tool = TavilySearch(max_results=5, search_depth="basic")
 llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0.2)
 
+
 # 3. Node 1: Search Web & LinkedIn for Decision-Makers
 def search_lead(state: AgentState) -> dict:
     retries = state.get("retries", 0)
+    existing = state.get("existing_leads", [])
+    # Exclude known full names (items that aren't URLs) from search results
+    exclusions = " ".join(f'-"{item}"' for item in existing if not item.startswith("http"))
+
     if retries == 0:
-        query = f'site:linkedin.com/in "{state["company"]}" "{state["city"]}" ("Events" OR "Workplace" OR "HR" OR "Admin")'
+        query = f'site:linkedin.com/in "{state["company"]}" "{state["city"]}" ("Events" OR "Workplace" OR "HR" OR "Admin")'.strip()
+    
     else:
         # Broader fallback query if first attempt missed
-        query = f'"{state["company"]}" "{state["city"]}" ("Founder" OR "HR Head" OR "People Operations") LinkedIn'
+        query = f'"{state["company"]}" "{state["city"]}" ("Founder" OR "HR Head" OR "People Operations") LinkedIn'.strip()
 
     print(f"🔍 [Node: search_lead | Attempt {retries + 1}] Query: {query}")
     response = search_tool.invoke({"query": query})
     results = response.get("results", response) if isinstance(response, dict) else response
     return {"raw_results": results, "retries": retries + 1}
+
+
 
 # 4. Node 2: Extract Profile & Score Lead Potential (1-10)
 def extract_and_qualify(state: AgentState) -> dict:
@@ -58,12 +67,14 @@ def extract_and_qualify(state: AgentState) -> dict:
     structured_llm = llm.with_structured_output(LeadEvaluation)
     prompt = f"""
     Target Company: {state['company']} | City: {state['city']}
+    ALREADY CONTACTED (DO NOT PICK THESE): {state.get('existing_leads', [])}
     Search Results: {state['raw_results']}
 
-    Pick the single best decision-maker for corporate events/offsites (Priority: Events > Workplace/Admin > HR > Founder).
+    Pick the single best NEW decision-maker NOT in the ALREADY CONTACTED list.
+    If every person in the results is already contacted or irrelevant, set lead_name to 'NOT_FOUND'.
     Score 1-10 based on: Role relevance (+4), City match (+3), Company event potential (+3).
-    Never invent URLs or names not in the search results.
     """
+
     result = cast(LeadEvaluation, structured_llm.invoke(prompt))
     return {
         "lead_name": result.lead_name,
@@ -75,10 +86,16 @@ def extract_and_qualify(state: AgentState) -> dict:
 
 # 5. Conditional Edge: Retry search once if lead is missing or weak
 def route_after_qualification(state: AgentState) -> Literal["search_lead", "generate_pitch"]:
-    if (state["lead_name"] == "NOT_FOUND" or state["qualification_score"] < 5) and state["retries"] < 2:
-        print("🔄 [Router] Low score or missing lead -> Looping back to search_lead...")
+    existing = set(state.get("existing_leads", []))
+    is_duplicate = (
+        state["lead_name"].strip().lower() in existing
+        or state["contact_info"].strip().rstrip("/").lower() in existing
+    )
+    if (state["lead_name"] == "NOT_FOUND" or is_duplicate or state["qualification_score"] < 5) and state["retries"] < 2:
+        print("🔄 [Router] Duplicate, missing, or weak lead -> Retrying search...")
         return "search_lead"
     return "generate_pitch"
+
 
 # 6. Node 3: Generate Tailored 3-Line GoPratle Pitch + Follow-Up
 def generate_pitch(state: AgentState) -> dict:
