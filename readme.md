@@ -1,8 +1,24 @@
-# 🚀AI BDR Lead Enrichment & Outreach Agent
+
+# 🚀 AI BDR Lead Enrichment & Outreach Agent
 
 An autonomous, Human-in-the-Loop (HITL) Business Development Representative (BDR) agent built with **LangGraph**, **Gemini 3.5 Flash-Lite**, **Groq**, **Tavily**, **Google Sheets**, and **Telegram**.
 
 The agent discovers event and corporate decision-makers across 4 web channels, qualifies leads, drafts personalized 3-line outreach pitches, and enforces human review before dispatching emails.
+
+---
+
+>
+> ## 🎥 Live Demo
+>
+> <p align="center">
+>   <a href="http://www.youtube.com/watch?v=6LRc3wePvQs" target="_blank">
+>     <img src="https://i.ytimg.com/vi/6LRc3wePvQs/hqdefault.jpg" alt="End-to-End AI Sales & Lead Gen Agent Demo" width="720" />
+>   </a>
+> </p>
+>
+> <p align="center">
+>   ▶️ <a href="http://www.youtube.com/watch?v=6LRc3wePvQs" target="_blank"><strong>Watch the full walkthrough on YouTube</strong></a>
+> </p>
 
 ---
 
